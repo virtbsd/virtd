@@ -25,13 +25,14 @@ import (
     "github.com/coopernurse/gorp"
     /* "github.com/virtbsd/VirtualMachine" */
     "github.com/virtbsd/jail"
+    "github.com/virtbsd/network"
 )
 
 var db *gorp.DbMap
 
 func main() {
     db = initDb()
-    myjail := jail.GetJail(db, map[string]interface{} { "name": "My Name" })
+    myjail := jail.GetJail(db, map[string]interface{} { "uuid": "My UUID" })
     fmt.Printf("%+v\n", myjail)
 }
 
@@ -43,10 +44,16 @@ func initDb() *gorp.DbMap {
 
     dbmap := &gorp.DbMap{Db: db, Dialect: gorp.MySQLDialect{"InnoDB", "UTF8"}}
 
-    dbmap.AddTableWithName(jail.Jail{}, "jail").SetKeys(false, "UUID")
+    dbmap.AddTable(jail.Jail{}).SetKeys(false, "UUID")
+    dbmap.AddTable(network.Network{}).SetKeys(false, "UUID")
+    dbmap.AddTable(network.NetworkDevice{}).SetKeys(false, "UUID")
+    dbmap.AddTable(network.NetworkPhysical{})
+    dbmap.AddTable(network.DeviceAddress{})
+    dbmap.AddTable(network.DeviceOption{})
 
     if err = dbmap.CreateTablesIfNotExists(); err != nil {
         panic(err)
     }
+
     return dbmap
 }
