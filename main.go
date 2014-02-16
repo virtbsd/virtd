@@ -50,6 +50,8 @@ func initDb() *gorp.DbMap {
     dbmap.AddTable(network.NetworkPhysical{})
     dbmap.AddTable(network.DeviceAddress{})
     dbmap.AddTable(network.DeviceOption{})
+    dbmap.AddTable(jail.MountPoint{})
+    dbmap.AddTable(jail.JailOption{})
 
     if err = dbmap.CreateTablesIfNotExists(); err != nil {
         panic(err)
