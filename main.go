@@ -32,8 +32,18 @@ var db *gorp.DbMap
 
 func main() {
     db = initDb()
-    myjail := jail.GetJail(db, map[string]interface{} { "uuid": "My UUID" })
-    fmt.Printf("%+v\n", myjail)
+    myjail := jail.GetJail(db, map[string]interface{} { "uuid": "bcf95990-98f7-11e3-b9f2-18037319526c" })
+    if myjail == nil {
+        fmt.Printf("Jail not found\n");
+    } else {
+        err := myjail.Validate()
+        if err != nil {
+            panic(err)
+        }
+
+        fmt.Printf("%+v\n", myjail)
+        fmt.Printf("Path: \"%s\"\n", myjail.Path)
+    }
 }
 
 func initDb() *gorp.DbMap {
