@@ -41,8 +41,15 @@ func main() {
             panic(err)
         }
 
-        fmt.Printf("%+v\n", myjail)
-        fmt.Printf("Path: \"%s\"\n", myjail.Path)
+        if err = myjail.PrepareHostNetworking(); err != nil {
+            panic(err);
+        }
+        if err = myjail.Start(); err != nil {
+            panic(err);
+        }
+        if err = myjail.PrepareGuestNetworking(); err != nil {
+            panic(err);
+        }
     }
 }
 
@@ -60,6 +67,7 @@ func initDb() *gorp.DbMap {
     dbmap.AddTable(network.NetworkPhysical{})
     dbmap.AddTable(network.DeviceAddress{})
     dbmap.AddTable(network.DeviceOption{})
+    dbmap.AddTable(network.Route{})
     dbmap.AddTable(jail.MountPoint{})
     dbmap.AddTable(jail.JailOption{})
 
