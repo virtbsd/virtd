@@ -41,14 +41,20 @@ func main() {
             panic(err)
         }
 
-        if err = myjail.PrepareHostNetworking(); err != nil {
-            panic(err);
-        }
-        if err = myjail.Start(); err != nil {
-            panic(err);
-        }
-        if err = myjail.PrepareGuestNetworking(); err != nil {
-            panic(err);
+        if myjail.IsOnline() == false {
+            if err = myjail.PrepareHostNetworking(); err != nil {
+                panic(err);
+            }
+            if err = myjail.Start(); err != nil {
+                panic(err);
+            }
+            if err = myjail.PrepareGuestNetworking(); err != nil {
+                panic(err);
+            }
+        } else {
+            if err = myjail.Stop(); err != nil {
+                panic(err)
+            }
         }
     }
 }
