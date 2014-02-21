@@ -19,7 +19,6 @@ import (
     "log"
     "time"
     */
-    "fmt"
     "database/sql"
     _ "github.com/go-sql-driver/mysql"
     "github.com/coopernurse/gorp"
@@ -32,31 +31,7 @@ var db *gorp.DbMap
 
 func main() {
     db = initDb()
-    myjail := jail.GetJail(db, map[string]interface{} { "uuid": "bcf95990-98f7-11e3-b9f2-18037319526c" })
-    if myjail == nil {
-        fmt.Printf("Jail not found\n");
-    } else {
-        err := myjail.Validate()
-        if err != nil {
-            panic(err)
-        }
-
-        if myjail.IsOnline() == false {
-            if err = myjail.PrepareHostNetworking(); err != nil {
-                panic(err);
-            }
-            if err = myjail.Start(); err != nil {
-                panic(err);
-            }
-            if err = myjail.PrepareGuestNetworking(); err != nil {
-                panic(err);
-            }
-        } else {
-            if err = myjail.Stop(); err != nil {
-                panic(err)
-            }
-        }
-    }
+    StartRESTService()
 }
 
 func initDb() *gorp.DbMap {
@@ -70,12 +45,12 @@ func initDb() *gorp.DbMap {
     dbmap.AddTable(jail.Jail{}).SetKeys(false, "UUID")
     dbmap.AddTable(network.Network{}).SetKeys(false, "UUID")
     dbmap.AddTable(network.NetworkDevice{}).SetKeys(false, "UUID")
-    dbmap.AddTable(network.NetworkPhysical{})
-    dbmap.AddTable(network.DeviceAddress{})
-    dbmap.AddTable(network.DeviceOption{})
-    dbmap.AddTable(network.Route{})
-    dbmap.AddTable(jail.MountPoint{})
-    dbmap.AddTable(jail.JailOption{})
+    dbmap.AddTable(network.NetworkPhysical{}).SetKeys(true, "NetworkPhysicalID")
+    dbmap.AddTable(network.DeviceAddress{}).SetKeys(true, "DeviceAddressID")
+    dbmap.AddTable(network.DeviceOption{}).SetKeys(true, "DeviceOptionID")
+    dbmap.AddTable(network.Route{}).SetKeys(true, "RouteID")
+    dbmap.AddTable(jail.MountPoint{}).SetKeys(true, "MountPointID")
+    dbmap.AddTable(jail.JailOption{}).SetKeys(true, "OptionID")
 
     if err = dbmap.CreateTablesIfNotExists(); err != nil {
         panic(err)
