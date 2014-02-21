@@ -23,6 +23,7 @@ import (
     "encoding/json"
     "net/http"
     "github.com/virtbsd/jail"
+    "github.com/virtbsd/VirtualMachine"
     "github.com/gorilla/mux"
 )
 
@@ -137,11 +138,32 @@ func StatusHandler(w http.ResponseWriter, req *http.Request) {
     }
 }
 
+type VirtualMachines struct {
+    VirtualMachines []VirtualMachine.VirtualMachine
+}
+
+func ListHandler(w http.ResponseWriter, req *http.Request) {
+    var vms VirtualMachines
+
+    for _, j := range jail.GetAllJails(db) {
+        vms.VirtualMachines = append(vms.VirtualMachines, j)
+    }
+
+    w.Header().Add("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+
+    if bytes, err := json.MarshalIndent(vms, "", "    "); err == nil {
+        w.Write(bytes)
+        return
+    }
+}
+
 func StartRESTService() {
     r := mux.NewRouter()
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/status", StatusHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/start", StartHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/stop", StopHandler).Methods("GET")
+    r.HandleFunc("/vmapi/1/vm/list", ListHandler).Methods("GET")
     http.Handle("/", r)
     http.ListenAndServe(":9000", nil)
 }
