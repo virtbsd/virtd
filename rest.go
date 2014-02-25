@@ -56,6 +56,12 @@ func StartHandler(w http.ResponseWriter, req *http.Request) {
                 w.WriteHeader(http.StatusInternalServerError)
                 status.Result = "Error"
                 status.ErrorMessage = err.Error()
+            } else {
+                if err = myjail.PostStart(); err != nil {
+                    w.WriteHeader(http.StatusInternalServerError)
+                    status.Result = "Error"
+                    status.ErrorMessage = err.Error()
+                }
             }
         } else {
             w.WriteHeader(http.StatusInternalServerError)
