@@ -22,6 +22,7 @@ import (
     "fmt"
     "encoding/json"
     "net/http"
+    "io/ioutil"
     "github.com/virtbsd/jail"
     "github.com/virtbsd/VirtualMachine"
     "github.com/gorilla/mux"
@@ -164,12 +165,97 @@ func ListHandler(w http.ResponseWriter, req *http.Request) {
     }
 }
 
+func AddVmHandler(w http.ResponseWriter, req *http.Request) {
+    jailrest := &jail.JailJSON{}
+    body, err := ioutil.ReadAll(req.Body)
+    if err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        status := ActionStatus{Result: "Error", ErrorMessage: err.Error()}
+        bytes, _ := json.MarshalIndent(status, "", "    ")
+        w.Write(bytes)
+        return
+    }
+
+    req.Body.Close()
+    if err = json.Unmarshal(body, jailrest); err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        status := ActionStatus{Result: "Error", ErrorMessage: err.Error()}
+        bytes, _ := json.MarshalIndent(status, "", "    ")
+        w.Write(bytes)
+        return
+    }
+
+    obj := &jail.Jail{}
+    obj.Name = jailrest.Name
+    obj.HostName = jailrest.HostName
+    obj.ZFSDataset = jailrest.ZFSDataset
+    obj.NetworkDevices = jailrest.NetworkDevices
+    obj.Routes = jailrest.Routes
+    obj.Options = jailrest.Options
+
+    for _, device := range obj.NetworkDevices {
+        for _, address := range device.Addresses {
+            address.DeviceAddressID = 0
+        }
+
+        for _, option := range device.Options {
+            option.DeviceOptionID = 0
+        }
+    }
+
+    for _, option := range obj.Options {
+        option.OptionID = 0
+    }
+
+    if err = obj.Persist(db); err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        status := ActionStatus{Result: "Error", ErrorMessage: err.Error()}
+        bytes, _ := json.MarshalIndent(status, "", "    ")
+        w.Write(bytes)
+        return
+    }
+}
+
+func DeleteVmHandler(w http.ResponseWriter, req *http.Request) {
+    var myjail *jail.Jail
+    myjail = nil
+
+    vars := mux.Vars(req)
+
+    if _, ok := vars["uuid"]; ok {
+        myjail = jail.GetJail(db, map[string]interface{} {"uuid": vars["uuid"]})
+    }
+
+    if myjail == nil {
+        w.WriteHeader(http.StatusNotFound)
+        return
+    }
+
+    w.Header().Add("Content-Type", "application/json")
+
+    status := ActionStatus{}
+    if err := myjail.Delete(db); err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        status.Result = "Error"
+        status.ErrorMessage = err.Error()
+    } else {
+        w.WriteHeader(http.StatusOK)
+        status.Result = "Okay"
+    }
+
+    if bytes, err := json.Marshal(status); err == nil {
+        w.Write(bytes)
+    }
+}
+
 func StartRESTService() {
     r := mux.NewRouter()
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/status", StatusHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/start", StartHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/stop", StopHandler).Methods("GET")
+    r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/delete", DeleteVmHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/list", ListHandler).Methods("GET")
+    r.HandleFunc("/vmapi/1/vm/add", AddVmHandler).Methods("POST")
     http.Handle("/", r)
     http.ListenAndServe(":9000", nil)
 }
