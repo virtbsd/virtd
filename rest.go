@@ -25,12 +25,36 @@ import (
     "io/ioutil"
     "github.com/virtbsd/jail"
     "github.com/virtbsd/VirtualMachine"
+    "github.com/virtbsd/network"
     "github.com/gorilla/mux"
 )
 
 type ActionStatus struct {
     Result string
     ErrorMessage string
+}
+
+func unmarshal_jail(w http.ResponseWriter, req *http.Request) *jail.JailJSON {
+    jailrest := &jail.JailJSON{}
+    body, err := ioutil.ReadAll(req.Body)
+    if err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        status := ActionStatus{Result: "Error", ErrorMessage: err.Error()}
+        bytes, _ := json.MarshalIndent(status, "", "    ")
+        w.Write(bytes)
+        return nil
+    }
+
+    req.Body.Close()
+    if err = json.Unmarshal(body, jailrest); err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        status := ActionStatus{Result: "Error", ErrorMessage: err.Error()}
+        bytes, _ := json.MarshalIndent(status, "", "    ")
+        w.Write(bytes)
+        return nil
+    }
+
+    return jailrest
 }
 
 func StartHandler(w http.ResponseWriter, req *http.Request) {
@@ -248,12 +272,121 @@ func DeleteVmHandler(w http.ResponseWriter, req *http.Request) {
     }
 }
 
+func UpdateVmHandler(w http.ResponseWriter, req *http.Request) {
+    var myjail *jail.Jail
+    vars := mux.Vars(req)
+
+    if _, ok := vars["uuid"]; ok {
+        myjail = jail.GetJail(db, map[string]interface{} {"uuid": vars["uuid"]})
+    } else {
+        return
+    }
+
+    jailrest := unmarshal_jail(w, req)
+    if jailrest == nil {
+        return
+    }
+
+    /* Diff each of the properties of the jail */
+    if len(jailrest.ZFSDataset) > 0 && myjail.ZFSDataset != jailrest.ZFSDataset {
+        myjail.ZFSDataset = jailrest.ZFSDataset
+    }
+
+    if len(jailrest.Name) > 0 && myjail.Name != jailrest.Name {
+        myjail.Name = jailrest.Name
+    }
+
+    if len(myjail.NetworkDevices) > 0 && len(jailrest.NetworkDevices) == 0 {
+        for _, device := range myjail.NetworkDevices {
+            device.Delete(db)
+        }
+
+        myjail.NetworkDevices = make([]*network.NetworkDevice, 0)
+    } else {
+        /* Check for new/updated network devices */
+        for _, restdevice := range jailrest.NetworkDevices {
+            if mydevice := network.FindDevice(myjail.NetworkDevices, restdevice); mydevice == nil {
+                restdevice.UUID = ""
+                for _, option := range restdevice.Options {
+                    option.DeviceOptionID = 0
+                    option.DeviceUUID = ""
+                }
+
+                for _, address := range restdevice.Addresses {
+                    address.DeviceAddressID = 0
+                    address.DeviceUUID = ""
+                }
+
+                myjail.NetworkDevices = append(myjail.NetworkDevices, restdevice)
+            }
+        }
+
+        /* Check for deleted network devices */
+        for i := 0; i < len(myjail.NetworkDevices); i++ {
+            mydevice := myjail.NetworkDevices[i]
+
+            if restdevice := network.FindDevice(jailrest.NetworkDevices, mydevice); restdevice == nil {
+                mydevice.Delete(db)
+                copy(myjail.NetworkDevices[i:], myjail.NetworkDevices[i+1:])
+                myjail.NetworkDevices[len(myjail.NetworkDevices)-1] = nil
+                myjail.NetworkDevices = myjail.NetworkDevices[:len(myjail.NetworkDevices)-1]
+                i--
+            }
+        }
+
+        for _, restdevice := range jailrest.NetworkDevices {
+            jaildevice := network.FindDevice(myjail.NetworkDevices, restdevice)
+
+            /* Check addresses */
+            for _, address := range restdevice.Addresses {
+                if a := network.FindAddress(jaildevice.Addresses, address); a == nil {
+                    address.DeviceAddressID = 0
+                    jaildevice.Addresses = append(jaildevice.Addresses, address)
+                }
+            }
+
+            for i := 0; i < len(jaildevice.Addresses); i++ {
+                address := jaildevice.Addresses[i]
+
+                if a := network.FindAddress(restdevice.Addresses, address); a == nil {
+                    db.Delete(address)
+                    copy(jaildevice.Addresses[i:], jaildevice.Addresses[i+1:])
+                    jaildevice.Addresses[len(jaildevice.Addresses)-1] = nil
+                    jaildevice.Addresses = jaildevice.Addresses[:len(jaildevice.Addresses)-1]
+                    i--
+                }
+            }
+
+            /* Check options */
+            for _, option := range restdevice.Options {
+                if o := network.FindOption(jaildevice.Options, option); o == nil {
+                    option.DeviceOptionID = 0
+                    jaildevice.Options = append(jaildevice.Options, option)
+                }
+            }
+
+            for i := 0; i < len(jaildevice.Options); i++ {
+                option := jaildevice.Options[i]
+
+                if o := network.FindOption(restdevice.Options, option); o == nil {
+                    db.Delete(option)
+                    copy(jaildevice.Options[i:], jaildevice.Options[i+1:])
+                    jaildevice.Options[len(jaildevice.Options)-1] = nil
+                    jaildevice.Options = jaildevice.Options[:len(jaildevice.Options)-1]
+                    i--
+                }
+            }
+        }
+    }
+}
+
 func StartRESTService() {
     r := mux.NewRouter()
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/status", StatusHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/start", StartHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/stop", StopHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/delete", DeleteVmHandler).Methods("GET")
+    r.HandleFunc("/vmapi/1/vm/uuid/{uuid}/update", UpdateVmHandler).Methods("POST")
     r.HandleFunc("/vmapi/1/vm/list", ListHandler).Methods("GET")
     r.HandleFunc("/vmapi/1/vm/add", AddVmHandler).Methods("POST")
     http.Handle("/", r)
